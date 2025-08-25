@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+   "-//Puppy Crawl//DTD Check Configuration 1.1//EN"
+   "http://www.puppycrawl.com/dtds/configuration_1_1.dtd">
+<!-- Checkstyle configuration for The Harker School, based on CS 1114, Virginia Tech -->
+<module name="Checker">
+   <module name="SuppressionCommentFilter"/>
+   <module name="FileTabCharacter"/>
+   <module name="TreeWalker">
+       <property name="tabWidth" value="4" />
+       <module name="JavadocMethod">
+           <property name="allowUndeclaredRTE" value="true"/>
+           <property name="allowThrowsTagsForSubclasses" value="true"/>
+           <property name="allowMissingThrowsTags" value="true"/>
+           <property name="scope" value="package"/>
+       </module>
+       <module name="JavadocMethod">
+           <property name="allowUndeclaredRTE" value="true"/>
+           <property name="allowThrowsTagsForSubclasses" value="true"/>
+           <property name="excludeScope" value="package"/>
+          </module>
+       <module name="JavadocType">
+           <property name="authorFormat" value="\S"/>
+           <property name="versionFormat" value="\S"/>
+           <property name="scope" value="package"/>
+       </module>
+       <module name="JavadocType">
+           <property name="authorFormat" value="\S"/>
+           <property name="versionFormat" value="\S"/>
+           <property name="excludeScope" value="package"/>
+       </module>
+       <module name="JavadocVariable">
+           <property name="scope" value="protected"/>
+       </module>
+       <module name="ConstantName">
+           <property name="format" value="^[A-Z0-9_]*$" />
+       </module>
+       <module name="LocalFinalVariableName"/>
+       <module name="LocalVariableName"/>
+       <module name="MemberName"/>
+       <module name="MethodName"/>
+       <module name="PackageName"/>
+       <module name="ParameterName"/>
+       <module name="StaticVariableName"/>
+       <module name="TypeName">
+               <property name="format"
+             value="^[A-Z]+([a-zA-Z_][a-zA-Z0-9_]*)*$"/>
+       </module>
+       <module name="IllegalImport"/>
+       <module name="RedundantImport"/>
+       <module name="LineLength">
+           <property name="ignorePattern" value="^ *\* *[^ ]+$"/>
+           <property name="max" value="80"/>
+       </module>
+       <module name="Indentation">
+           <property name="basicOffset" value="4"/>
+           <property name="braceAdjustment" value="0"/>
+           <property name="caseIndent" value="4"/>
+       </module>

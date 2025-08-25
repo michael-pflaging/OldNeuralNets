@@ -1,0 +1,691 @@
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import org.json.*;
+import java.nio.file.Files;
+import java.nio.charset.*;
+import java.nio.file.Paths;
+import java.util.*;
+
+/**
+ * Michael Pflaging
+ * 09/09/2021
+ * Implement a A-B-C neural network that uses gradient descent for training and backpropagation for optimization
+ * 
+ * To-do: Make control file changeable at runtime, make it a 4 layer network
+ */
+public class NeuralNetwork
+{
+   //Activations
+   private double[][] activations;
+   //Weights
+   private double[][][] weights;
+   //Inputs, Hidden activations, Outputs, Layers, Learning Factor
+   private int numInputs;
+   private int numActivations;
+   private int numOutputs;
+   private int numLayers;
+   private double λ;
+
+   //Training arrays
+   private double[] hj;
+   private double[] ak;
+   private double[] Θj;
+   private double[] ψi;
+   private double[] Ti;
+   //For storing random ranges
+   private double minRand;
+   private double maxRand;
+   //Training conditions
+   private double minError;
+   private int cyclesMax;
+
+   //For the possible inputs and expected outputs
+   private double[][] possibleInputValues;
+   private double[][] expectedOutputValues;
+
+   private String weightFileName;
+   //True makes the network train, false makes the network run
+   private boolean trainOrRun;
+
+   /**
+    * Initialize the network
+    * @param numInputs the number of input activations
+    * @param numActivations the number of hidden activations per layer
+    * @param numOutputs the number of output activations
+    * @param numLayers the number of layers
+    * @param λ the learning factor
+    * @param weightFileName the name of the weight file to save/load from
+    * @param trainOrRun boolean whether training or running
+    * @param cyclesMax the maximum number of cycles while training
+    * @param minError the minimum error at which training stops
+    * @param minRand the lower bound of the random weights
+    * @param maxRand the upper bound of the random weights
+    */
+   public NeuralNetwork(int numInputs, int numActivations, int numOutputs, int numLayers, double λ, String weightFileName, 
+                        boolean trainOrRun, int cyclesMax, double minError, double minRand, double maxRand)
+   {
+      //Network specifics
+      this.numInputs = numInputs;
+      this.numActivations = numActivations;
+      this.numOutputs = numOutputs;
+      this.numLayers = numLayers;
+      this.λ = λ;
+      this.weightFileName = weightFileName;
+      this.trainOrRun = trainOrRun;
+      this.cyclesMax = cyclesMax;
+      this.minError = minError;
+      this.minRand = minRand;
+      this.maxRand = maxRand;
+
+      
+      //Make sure the array of activations is large enough to store all activations/outputs
+      if (numActivations > numInputs && numActivations > numOutputs)
+      {
+         activations = new double[numLayers][numActivations];
+      } //if (numActivations > numInputs && numActivations > numOutputs)
+      else if (numInputs > numOutputs)
+      {
+         activations = new double[numLayers][numInputs];
+      } //else if (numInputs > numOutputs)
+      else
+      {
+         activations = new double[numLayers][numOutputs];
+      } //else
+      
+      //Make sure to have enough room regardless of numActivations/ numOuptuts relative size
+      if (numActivations > numOutputs)
+      {
+         weights = new double[numLayers-1][numActivations][numActivations];
+      } //if(numActivations > numOutputs)
+      else
+      {
+         weights = new double[numLayers-1][numOutputs][numOutputs];
+      } //else
+
+      //Training arrays- j's are numActivations and i's are numOutputs
+      hj = new double[numActivations];
+      Θj = new double[numActivations];
+      ψi = new double[numOutputs];
+      Ti = new double[numOutputs];
+   } //public NeuralNetwork(int numInputs, int numActivations, int numOutputs, int numLayers, double λ)
+
+   /**
+    * Generate a random number from a given minimum value to a maximum value
+    * @param min The minimum value of the randomly generated number
+    * @param max The maximum value of the randomly generated number
+    * @return a double that is greater than or equal to the min value, and less than the max.
+    */
+   private static double generateRandomNumber(double min, double max)
+   {
+      return Math.random() * (max - min) + min;
+   } //private static double generateRandomNumber(double min, double max)
+
+   /**
+    * Calculate and return the result of the sigmoid function 
+    * @param input the value being plugged in to the sigmoid function
+    * @return the value of of the sigmoid after x has been plugged in
+    */
+   private static double sigmoid(double input)
+   {
+      return 1.0 / (1.0 + java.lang.Math.exp(-input));
+   } //private static double sigmoid(double input)
+
+   /**
+    * Calculate and return the value of the derivative of the sigmoid function
+    * @param input the value passed to the derivate function
+    * @return the value of the deriv of the sigmoid using the value of the sigmoid
+    */
+   private static double sigmoidDeriv(double input)
+   {
+      return sigmoid(input) * (1.0 - sigmoid(input));
+   } //private static double sigmoidDeriv(double input)
+
+   /**
+    * Calculate and return the value of the error given a certain ouptut value and
+    * expected value
+    * @param output the output value being compared to the expected value
+    * @param expected the expected output value of the neural net
+    * @return the calculated error value
+    */
+   private static double calculateError(double output, double expected)
+   {
+      return (0.5 * ( (expected - output) * (expected - output) ) );
+   } //private static double calculateError(double output, double expected)
+
+   /**
+    * Set the weights of the neural network to be random values that are between
+    * the min and max specified. Used for training the network. Technically this is
+    * not the most efficient since every space in the weight array is filled regardless
+    * of if it is needed
+    * @param net the instance of NeuralNetwork which will have its weights set
+    * @param min the minimum value of the weights
+    * @param max the maximum value of the weights
+    */
+   private static void setRandomWeights(NeuralNetwork net, double min, double max)
+   {
+      //Loop through each layer
+      for (int n = 0; n < net.weights.length; n++)
+      {
+         //Loop through each activation's weights in each layer
+         for (int k = 0; k < net.weights[n].length; k++)
+         {
+            //Loop through each weight for each activation
+            for (int j = 0; j < net.weights[n][k].length; j++)
+            {
+               //Assign a random value within the specified range to this weight
+               net.weights[n][k][j] = generateRandomNumber(min, max);
+            } //for (int j = 0; j < net.weights[n][k]; j++)
+         } //for (int k = 0; k < net.weights[n].length; j++)
+      } //for (int n = 0; n < net.weights.length; n++)
+   } //private static void setRandomWeights(NeuralNetwork net, double min, double max)
+
+   /**
+    * Set up the expected outputs for AND, works for 2-B-1 network
+    * @param net the network whose inputs and outputs are being configured
+    */
+   private static void setupAND(NeuralNetwork net)
+   {
+      net.possibleInputValues = new double[][]{{0.0, 0.0}, {0.0, 1.0}, {1.0, 0.0}, {1.0, 1.0}};
+      net.expectedOutputValues = new double[][]{{0.0}, {0.0}, {0.0}, {1.0}};
+   } //private static void setupAND(NeuralNetwork net)
+
+   /**
+    * Set up the expected outputs for OR, works for 2-B-1 network
+    * @param net the network whose inputs and outputs are being configured
+    */
+   private static void setupOR(NeuralNetwork net)
+   {
+      net.possibleInputValues = new double[][]{{0.0, 0.0}, {0.0, 1.0}, {1.0, 0.0}, {1.0, 1.0}};
+      net.expectedOutputValues = new double[][]{{0.0}, {1.0}, {1.0}, {1.0}};
+   } //private static void setupOR(NeuralNetwork net)
+
+   /**
+    * Set up the expected outputs for XOR, works for 2-B-1 network
+    * @param net the network whose inputs and outputs are being configured
+    */
+   private static void setupXOR(NeuralNetwork net)
+   {
+      net.possibleInputValues = new double[][]{{0.0, 0.0}, {0.0, 1.0}, {1.0, 0.0}, {1.0, 1.0}};
+      net.expectedOutputValues = new double[][]{{0.0}, {1.0}, {1.0}, {0.0}};
+   } //private static void setupXOR(NeuralNetwork net)
+
+   /**
+    * Set up the expected outputs for AND, OR, and XOR, works for 2-B-3 network
+    * @param net the network whose inputs and outputs are being configured
+    */
+   private static void setupAndOrXor(NeuralNetwork net)
+   {
+      net.possibleInputValues = new double[][]{{0.0, 0.0}, {0.0, 1.0}, {1.0, 0.0}, {1.0, 1.0}};
+      net.expectedOutputValues = new double[][]{{0.0, 0.0, 0.0}, {0.0, 1.0, 1.0}, {0.0, 1.0, 1.0}, {1.0, 1.0, 0.0}};
+   } //private static void setupAndOrXor(NeuralNetwork net)
+
+   /**
+    * Set up more complex tester for a 3-B-4 network
+    * Outputs are: XOR first two, AND of XOR function of first two with 3rd input,
+    * OR of XOR function of first two with 3rd input, XOR of XOR function of first two with 3rd input
+    * @param net the network whose inputs and outputs are being configured
+    */
+   private static void setupABCTester1(NeuralNetwork net)
+   {
+      net.possibleInputValues = new double[][]{{0.0, 0.0, 0.0}, {0.0, 0.0, 1.0}, {0.0, 1.0, 0.0}, {1.0, 0.0, 0.0},
+                                                {0.0, 1.0, 1.0}, {1.0, 1.0, 0.0}, {1.0, 0.0, 1.0}, {1.0, 1.0, 1.0}};
+      net.expectedOutputValues = new double[][]{{0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 1.0, 1.0}, {1.0, 0.0, 1.0, 1.0}, {1.0, 0.0, 1.0, 1.0},
+                                                {1.0, 1.0, 1.0, 0.0}, {0.0, 0.0, 0.0, 0.0}, {1.0, 1.0, 1.0, 0.0}, {0.0, 0.0, 1.0, 1.0}};                           
+   } //private static void setupABCTester1(NeuralNetwork net)
+
+   /**
+    * Set up another complex tester, this time for a 4-B-3 network
+    * Outputs are: XOR first two, OR of 3 and 4, AND of XOR and OR
+    * @param net the network whose inputs and outputs are being configured
+    */
+   private static void setupABCTester2(NeuralNetwork net)
+   {
+      net.possibleInputValues = new double[][]{{0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}, {0.0, 0.0, 1.0, 0.0}, {0.0, 1.0, 0.0, 0.0},
+                                                {1.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 1.0, 1.0}, {0.0, 1.0, 0.0, 1.0}, {1.0, 0.0, 0.0, 1.0},
+                                                {0.0, 1.0, 1.0, 0.0}, {1.0, 0.0, 1.0, 0.0}, {1.0, 1.0, 0.0, 0.0}, {0.0, 1.0, 1.0, 1.0},
+                                                {1.0, 0.0, 1.0, 1.0}, {1.0, 1.0, 0.0, 1.0}, {1.0, 1.0, 1.0, 0.0}, {1.0, 1.0, 1.0, 1.0}};
+      net.expectedOutputValues = new double[][]{{0.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 1.0, 0.0}, {1.0, 0.0, 0.0},
+                                                {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {1.0, 1.0, 1.0}, {1.0, 1.0, 1.0},
+                                                {1.0, 1.0, 1.0}, {1.0, 1.0, 1.0}, {0.0, 0.0, 0.0}, {1.0, 1.0, 1.0},
+                                                {1.0, 1.0, 1.0}, {0.0, 1.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 1.0, 0.0}};
+   } //private static void setupABCTester2(NeuralNetwork net)
+
+   /**
+    * Write the contents of the network to a json file using JSON.simple
+    * @param net the neural network whose information is being outputted to a file
+    * @param fileName the name of the file being saved (.json extension is added to the name automatically)
+    */
+   private static void saveWeights(NeuralNetwork net, String fileName)
+   {
+      //Store weights
+      JSONArray networkWeights = new JSONArray(net.weights); 
+
+      try (FileWriter file = new FileWriter(fileName + ".json"))
+      {
+         //Write to file, value inside the toString is the spaces of indentation
+         file.write(networkWeights.toString(3));
+         
+      } //try
+      catch (IOException e) 
+      {
+         e.printStackTrace();
+      } //catch (IOException ex) 
+   } //private static void writeToJsonFile()
+
+   /**
+    * Load the weights from saved file (weights array MUST be right size before calling this)
+    * @param fileName the weights file
+    * @param net the network whose weights are being set from the file
+    */
+   private static void loadWeights(String fileName, NeuralNetwork net)
+   {
+      String content = "";
+      try 
+      {
+         content = Files.readString(Paths.get(fileName + ".json"), StandardCharsets.US_ASCII);
+
+      } //try
+      catch (IOException e) 
+      {
+         e.printStackTrace();
+      } //catch (IOException e) 
+
+      //JSON tokener object to parse read file
+      JSONTokener jsonTokener = new JSONTokener(content);
+      
+      //Read the weights (only object)
+      JSONArray savedWeights = (JSONArray)jsonTokener.nextValue();
+
+      //Loop through each layer
+      for (int n = 0; n < net.weights.length; n++)
+      {
+         //Loop through each activation's weights in each layer
+         for (int k = 0; k < net.weights[n].length; k++)
+         {
+            //Loop through each weight for each activation
+            for (int j = 0; j < net.weights[n][k].length; j++)
+            {
+               //Get the weight value
+               net.weights[n][k][j] = savedWeights.getJSONArray(n).getJSONArray(k).getDouble(j);
+            } //for (int j = 0; j < net.weights[n][k]; j++)
+         } //for (int k = 0; k < net.weights[n].length; j++)
+      } //for (int n = 0; n < net.weights.length; n++)
+   } //private static void loadWeights(String fileName, NeuralNetwork net)
+
+   /**
+    * Parse a control file and create a new NeuralNetwork according to the specifications
+    * @return a neural network
+    */
+   private static NeuralNetwork loadFromControl(String fileName) throws IOException
+   {
+      //C for the content of the control file
+      String[] c = Files.readString(Paths.get(fileName + ".txt")).split(", ");
+      //This involves a lot of casting to the right type, if control file is messed up then errors galore
+      return createNetwork(Integer.parseInt(c[0]), Integer.parseInt(c[1]), Integer.parseInt(c[2]), Integer.parseInt(c[3]), 
+                           Double.parseDouble(c[4]), c[5], Boolean.parseBoolean(c[6]), Integer.parseInt(c[7]), 
+                           Double.parseDouble(c[8]), Double.parseDouble(c[9]), Double.parseDouble(c[10]), Boolean.parseBoolean(c[11]));
+   }
+
+   /**
+    * Run the network
+    * @param net the instance of NeuralNetwork that will be run
+    * @param out boolean determining whether all info is printed
+    * @param table boolean determining if truth table is printed
+    * @return the total error of the network
+    */
+   private static double runNetwork(NeuralNetwork net, boolean out, boolean table)
+   {
+      double totalError = 0.0;
+      boolean printCompleteOutput = out;
+      boolean printTruthTable = table;
+
+      //Iterate through the different test cases of different input activations
+      for (int a = 0; a < net.possibleInputValues.length; a++)
+      {
+         //Assign the input activation values
+         for (int k = 0; k < net.numInputs; k++)
+         {
+            net.activations[0][k] = net.possibleInputValues[a][k];
+         } //for (int k = 0; k < net.numInputs; k++)
+
+         //Iterate through the hidden layers -> start on 1st (not 0th) layer and end before output layer
+         for (int n = 1; n < net.numLayers-1; n++)
+         {
+            //Iterate through each neuron in the hidden activation layer
+            for (int j = 0; j < net.numActivations; j++)
+            {
+               //Test for if on the first layer of hidden activations
+               if (n == 1)
+               {
+                  //Make sure activation is cleared from previous run
+                  net.activations[n][j] = 0.0;
+
+                  //Loop through input activations
+                  for (int k = 0; k < net.numInputs; k++)
+                  {
+                     //Sum the dot products into the value of the activation
+                     net.activations[n][j] += net.activations[n-1][k] * net.weights[n-1][k][j];
+                  } //for (int k = 0; k < net.numInputs; k++)
+
+                  //Then do the sigmoid
+                  net.activations[n][j] = sigmoid(net.activations[n][j]);
+               } //if (n == 1)
+
+               /*
+               * If not on the first layer then on a normal hidden layer
+               * Loop through input activations
+               * Make sure activation is cleared from previous run
+               */
+               net.activations[n][j] = 0.0;
+               for (int k = 0; k < net.numActivations; k++)
+               {
+                  //Sum the dot products into the value of the activation
+                  net.activations[n][j] += net.activations[n-1][k] * net.weights[n-1][k][j];
+               } //for (int k = 0; k < net.numActivations; k++)
+
+               //Then do the sigmoid
+               net.activations[n][j] = sigmoid(net.activations[n][j]);
+            } //for (int j = 0; j < net.numActivations; j++)
+         } //for (int n = 1; n < net.numLayers-1; n++)
+
+         //Now calculate output(s), loop through number of outputs
+         for (int i = 0; i < net.numOutputs; i++)
+         {
+            //Loop through input activations, make sure output activation is cleared before calculating
+            net.activations[net.numLayers-1][i] = 0.0;
+            for (int j = 0; j < net.numActivations; j++)
+            {
+               //Sum the dot products into the value of the activation
+               net.activations[net.numLayers-1][i] += net.activations[net.numLayers-2][j] * net.weights[net.numLayers-2][j][i];
+            } //for (int j = 0; j < net.numActivations; j++)
+
+            //Then do the sigmoid
+            net.activations[net.numLayers-1][i] = sigmoid(net.activations[net.numLayers-1][i]);
+         } //for (int i = 0; i < net.numOutputs; i++)
+         
+         //Calculate error
+         double thisError = 0.0;
+         for (int i = 0; i < net.numOutputs; i++)
+         {
+            //Add error for this run to total error
+            thisError += calculateError(net.activations[net.numLayers-1][i], net.expectedOutputValues[a][i]);
+            totalError += calculateError(net.activations[net.numLayers-1][i], net.expectedOutputValues[a][i]);
+         } //for (int i = 0; i < net.numOutputs; i++)
+
+         //Print truth table if required
+         if (printTruthTable)
+         {
+            //Print out the input activations
+            for (int k = 0; k < net.numInputs; k++)
+            {
+               System.out.print(net.activations[0][k] + " ");
+            } //for (int k = 0; k < net.numActivations; k++)
+
+            //Get a bit more space
+            System.out.print("  ");
+
+            //Print out the expected outputs
+            for (int i = 0; i < net.numOutputs; i++)
+            {
+               System.out.print(net.expectedOutputValues[a][i] + " ");
+            } //for (int i = 0; i < net.numOutputs; i++)
+
+            //Get a bit more space
+            System.out.print("  ");
+
+            //Print out the actual outputs - hardcoded for 3 layer network
+            for (int i = 0; i < net.numOutputs; i++)
+            {
+               System.out.print(net.activations[2][i] + "\t");
+            } //for (int i = 0; i < net.numOutputs; i++)
+
+            //Now go to a new line
+            System.out.println(" ");
+         } //if (printTruthTable)
+      
+         //Truth table but with error
+         if (printCompleteOutput)
+         {
+            //Print out the input activations
+            for (int k = 0; k < net.numInputs; k++)
+            {
+               System.out.print(net.activations[0][k] + " ");
+            } //for (int k = 0; k < net.numActivations; k++)
+         
+            //Get a bit more space
+            System.out.print("  ");
+         
+            //Print out the expected outputs
+            for (int i = 0; i < net.numOutputs; i++)
+            {
+               System.out.print(net.expectedOutputValues[a][i] + " ");
+            } //for (int i = 0; i < net.numOutputs; i++)
+         
+            //Get a bit more space
+            System.out.print("  ");
+         
+            //Print out the actual outputs - hardcoded for 3 layer network
+            for (int i = 0; i < net.numOutputs; i++)
+            {
+               System.out.print(net.activations[2][i] + "\t");
+            } //for (int i = 0; i < net.numOutputs; i++)
+         
+            //Print error
+            System.out.print(thisError);
+
+            //Now go to a new line
+            System.out.println(" ");
+         } //if (printCompleteOutput)
+
+      } //for (int a = 0; a < net.possibleInputValues.length; a++)
+
+      if(printCompleteOutput)
+      {
+         System.out.println("Total Error: " + totalError);
+      }
+      //Return total error
+      return totalError;
+   } //private static double runNetwork(NeuralNetwork net, boolean out, boolean table)
+
+   /**
+    * Train the neural network using gradient descent with backpropagation implemented for efficiency
+    * @param net the neural network to be trained
+    */
+   private static void trainNetwork(NeuralNetwork net)
+   {     
+
+      double start = System.currentTimeMillis();
+
+      //Error calculated by running network - set to 1 now but just temporary until network is run
+      double error = 1.0;
+      //Number of cycles
+      int cycles = 0;
+
+      //Loop through training until a end condition is met
+      while (cycles < net.cyclesMax && error > net.minError)
+      {
+         error = runNetwork(net, false, false);
+
+         //Cycle what is expected from the 4 output cases
+         net.Ti = net.expectedOutputValues[cycles % net.expectedOutputValues.length];
+         net.ak = net.possibleInputValues[cycles % net.expectedOutputValues.length];
+
+         //Calculate jk, Θj, ψi. For each output activation
+         for (int i = 0; i < net.numOutputs; i++)
+         {
+            //Zero Θi before calculating it
+            double Θi = 0.0;
+            //For each hidden activation
+            for (int j = 0; j < net.numActivations; j++)
+            {
+               //Zero Θj
+               net.Θj[j] = 0.0;
+               //For each input activation
+               for (int k = 0; k < net.numInputs; k++)
+               {
+                  net.Θj[j] += net.ak[k] * net.weights[0][k][j];
+               } //for (int k = 0; k < net.numInputs; k++)
+               //Calculate hj
+               net.hj[j] = sigmoid(net.Θj[j]);
+               Θi += net.hj[j] * net.weights[1][j][i];
+            } //for (int j = 0; j < net.numActivations; j++)
+
+            net.ψi[i] = (net.Ti[i] - sigmoid(Θi)) * sigmoidDeriv(Θi);
+
+         } //for (int i = 0; i < net.numOutputs; i++)
+
+         //Declare Ωj
+         double Ωj = 0.0;
+         //Calculate Ωj + calculate and apply change in weights for w1xx weights. For each hidden activation
+         for (int j = 0; j < net.numActivations; j++)
+         {
+            //Zero Ωj
+            Ωj = 0.0;
+            //For each output activation
+            for (int i = 0; i < net.numOutputs; i++)
+            {
+               Ωj += net.ψi[i] * net.weights[1][j][i];
+               net.weights[1][j][i] += net.λ * net.hj[j] * net.ψi[i];
+            } //for (int i = 0; i < net.numOutputs; i++)
+
+            //Calculate and apply change in w0xx weights. For each input activation
+            for (int k = 0; k < net.numInputs; k++)
+            {
+               net.weights[0][k][j] += net.λ * net.ak[k] * Ωj * sigmoidDeriv(net.Θj[j]);
+            } //for (int k = 0; k < net.numInputs; k++)
+
+         } //for (int j = 0; j < net.numActivations; j++)
+
+         //Save weights every 500 cycles
+         if(cycles % 500 == 0)
+         {
+            saveWeights(net, net.weightFileName);
+         }
+         
+         //Increment # of cycles
+         cycles++;
+      } //while (cycles < cyclesMax && Error > minError)
+
+      //End timer
+      double timeTaken = System.currentTimeMillis() - start;
+
+      //Get white space
+      System.out.println();
+      System.out.println();
+      //Print why it stopped
+      if (cycles >= net.cyclesMax)
+      {
+         System.out.println("Hit maximum number of loops.");
+      } //if (cycles >= net.cyclesMax)
+      else
+      {
+         System.out.println("Error was smaller than minError.");
+      } //else
+
+      //Print config and rand range
+      System.out.println("Config: " + net.numInputs + " " + net.numActivations + " " + net.numOutputs);
+      System.out.println("Rand range: " + net.minRand + " - " + net.maxRand);
+
+      //Print N max, Emin, and lambda
+      System.out.println("N max was: " + net.cyclesMax);
+      System.out.println("Min Error was " + net.minError);
+      System.out.println("λ was: " + net.λ);
+
+      //Print Error then # of iteration
+      System.out.println("Error was: " + error);
+      System.out.println("# of iterations: " + cycles);
+
+      //Now print truth table
+      System.out.println("Truth Table");
+      runNetwork(net, false, true);
+
+      //Print time taken
+      timeTaken /= 1000;
+      System.out.println();
+      if(timeTaken > 60)
+      {
+         System.out.println("Time Taken: " + timeTaken/60 + "m " + timeTaken%60 + "s");
+      } //if(timeTaken > 60)
+      else
+      {
+         System.out.println("Time Taken: " + timeTaken + "s");
+      }
+
+      //Following whitespace
+      System.out.println();
+      System.out.println();
+
+      //Save weights
+      saveWeights(net, net.weightFileName);
+
+   } //private static void trainNetwork()
+
+   /**
+    * Create a new network with many different specifications and set up the truth table (currently latter is hardcoded)
+    * @param numInputs the number of input activations
+    * @param numActivations the number of hidden activations
+    * @param numOutputs the number of output activations
+    * @param numLayers the number of layers (must be 3 for now)
+    * @param lambda the learning factor
+    * @param weightFileName the name of the file where weights are saved/loaded
+    * @param trainOrRun true if training false if running
+    * @param cyclesMax max number of cycles while training
+    * @param minError the minimum error at which training stops
+    * @param minRand lower bound of random generation of weights
+    * @param maxRand upper bound of random generations of weights
+    * @param loadWeights whether to load weights or not
+    * @return a new neural network according to all of the parameters
+    */
+   private static NeuralNetwork createNetwork(int numInputs, int numActivations, int numOutputs, int numLayers, double lambda,
+                                             String weightFileName, boolean trainOrRun, int cyclesMax, double minError,
+                                             double minRand, double maxRand, boolean loadWeights)
+   {
+      NeuralNetwork net = new NeuralNetwork(numInputs, numActivations, numOutputs, numLayers, lambda, weightFileName, trainOrRun,
+                                             cyclesMax, minError, minRand, maxRand);
+ 
+      /*
+      * Set up AND, OR, XOR (2 inputs 1 output), AndOrXor (2 inputs 3 outputs), 
+      * ABCTester1 (3 inputs 4 outputs), or ABCTester2 (4 inputs 3 outputs)
+      * Testers are on single line comments to make it easier to change between tests
+      */
+
+      //setupAND(net);
+      //setupOR(net);
+      //setupXOR(net);
+      setupAndOrXor(net);
+      //setupABCTester1(net);
+      //setupABCTester2(net);
+ 
+      //Load weights if told to, otherwise randomize weights
+      if (loadWeights)
+      {
+         loadWeights(net.weightFileName, net);
+      } //if (loadWeights)
+      else
+      {
+         setRandomWeights(net, minRand, maxRand);
+      } //else
+ 
+    return net;
+   } //private static NeuralNetwork createNetwork()
+
+   /**
+    * Create and set up an instance of NeuralNetwork to be run or trained
+    * @param args the arguments passed to (and ignored by) the main method
+    */
+   public static void main(String[] args) throws IOException
+   {
+      NeuralNetwork net = loadFromControl("control");
+
+      //Either train or run the network based on the value of trainOrRun
+      if (net.trainOrRun)
+      {
+         trainNetwork(net);
+      } //if (net.trainOrRun)
+      else
+      {
+         runNetwork(net, true, false);
+      } //else
+   } //public static void main(String[] args)
+} //public class NeuralNetwork
