@@ -28,7 +28,15 @@ void Net_Tester::setup_inputs(double** inputs, int num_cases, int num_inputs)
 }
 
 
-
+/*
+* One of the OG test cases, designed to test a 2-B-1 network
+* Tests the logical AND combination of the two input activations,
+* and measured in the singular output activation
+* 
+* This is a linearly separable problem, if this fails something is really wrong
+* 
+* The number of hidden layers is not required to be 1
+*/
 void Net_Tester::setup_AND()
 {
     //Allocate memory for expected inputs/outputs. (2-B-1) network
@@ -65,6 +73,15 @@ void Net_Tester::setup_AND()
 }
 
 
+/*
+* One of the OG test cases, designed to test a 2-B-1 network
+* Tests the logical OR combination of the two input activations,
+* and measured in the singular output activation
+* 
+* This is a linearly separable problem, if this fails something is really wrong
+* 
+* The number of hidden layers is not required to be 1
+*/
 void Net_Tester::setup_OR()
 {
     //Allocate memory for expected inputs/outputs. (2-B-1) network
@@ -101,6 +118,16 @@ void Net_Tester::setup_OR()
 }
 
 
+/*
+* One of the OG test cases, designed to test a 2-B-1 network
+* Tests the logical XOR combination of the two input activations,
+* and measured in the singular output activation
+* 
+* This is *not* a linearly separable problem, this was the original source
+* of pain in suffering back when I learned this stuff in HS.
+* 
+* The number of hidden layers is not required to be 1
+*/
 void Net_Tester::setup_XOR()
 {
     //Allocate memory for expected inputs/outputs. (2-B-1) network
@@ -137,7 +164,15 @@ void Net_Tester::setup_XOR()
 }
 
 
-
+/*
+* One of the OG test cases, designed to test a 2-B-3 network
+* The first output is expected to be the AND of inputs 1 & 2
+* The second output is expected to be the OR of inputs 1 & 2
+* The third output is expected to be the XOR of inputs 1 & 2
+* Yeah that's probably an overkill explanation but the test cases get more complicated
+*
+* * The number of hidden layers is not required to be 1
+*/
 void Net_Tester::setup_AND_OR_XOR()
 {
     //Allocate memory for expected inputs/outputs. (2-B-3) network
