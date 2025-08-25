@@ -11,6 +11,9 @@ This contains code for a simple feed-forward neural network, designed to work wi
 
 The updated code is written in C++ and was done mostly in 2024, but I am now bringing it to GitHub to properly track changes and to be able to show off something. (This is because my university' academic policies allow for punishing students who upload projects from classes to public repos if their projects are copied by a 3rd party).
 
+*Important*
+In the original code, we tested the functionality of the neural network by setting input activations to 0s & 1s and the output activations to a logical combination of input activations. This holdover remains, and current test cases follow the same format.
+
 # Warning about the old code:
 I ***highly*** recommend avoiding digging through the OG_Code folder. Please, trust me. It took me a couple weeks of headscratching, (re)diagramming out everything, and questioning my life decisions to decipher the old code I had written during highschool. I geniuenly don't know how the OG code even worked or how it got me an A in the class. Also, there were many quirks to the design and variable naming that were largely due to needing to follow the class's documentation of the mathematical derivation of gradient descent (and of course I lost that documentation). However, my complete lack of remembering that I was working within a class structure is also very apparent. 
 
