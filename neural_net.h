@@ -14,50 +14,30 @@ private:
     //Weights
     double*** weights;
     //Inputs, Hidden activations, Outputs, Layers, Learning Factor
-    int num_inputs;
-    int num_hidden1;
-    int num_hidden2;
-    int num_outputs;
+    int* num_per_layer;
     int num_layers;
-    double λ;
+    
     //Training arrays
-    double* am;
-    double* Θk;
-    double* ak;
-    double* Θj;
-    double* aj;
-    double* Ψj;
-    double* ai;
-    double* ψi;
     double* Ti;
-    //For storing random ranges
-    double min_rand;
-    double max_rand;
-    //Training conditions
-    double min_error;
-    int cycles_max;
-    int save_frequency;
+    double** raw_vals;
+    double** actual_vals;
+    double** error_caused;
+
     //For storing sum of single set errors
     double single_set_error;
-    //For the possible inputs and expected outputs
-    double** possible_input_values;
+    //For the expected inputs and expected outputs
+    double** expected_input_values;
     double** expected_output_values;
     int num_input_cases;
     int num_output_cases;
 
     string weight_file_name;
-    //True makes the network train, false makes the network run
-    bool train_or_run;
-
-    //For initialization / deletion purposes, this leads to excess memory usage in activations and weights array since
-    //They should be jagged arrays where needed to cut down on memory use but I am lazy
-    int max_activations;
 
     /**
     * Generate a random number from the member variables min_rand to max_rand
     * @return a double that is greater than or equal to the min value, and less than the max.
     */
-    double generate_random_number() const;
+    double generate_random_number(int min_rand, int max_rand) const;
 
 
     /**
@@ -75,6 +55,8 @@ private:
     */
     double sigmoid_deriv(double input) const;
 
+    double reLU(double input) const;
+    double reLU_deriv(double input) const;
 
     /**
     * Calculate and return the value of the error given a certain ouptut value and
@@ -92,7 +74,7 @@ private:
     * not the most efficient since every space in the weight array is filled regardless
     * of if it is needed
     */
-    void set_random_weights();
+    void set_random_weights(int min_rand, int max_rand);
 
     /**
     * Write the contents of this network to a json file using JSON.simple
@@ -100,28 +82,29 @@ private:
     */
     void save_weights();
 
+
+    void allocate_training_memory();
+    void free_training_memory();
+
+    /*
+    * Wrappers for the activation function, allows for easy changes
+    * to which activation function is being used in the program
+    */
+    double activation_func(double input) const;
+    double activation_func_deriv(double input) const;
+
+
 public:
     //Default constructor
     Neural_Net();
 
     /**
     * Parametrized constructor that initializes the network
-    * @param num_inputs the number of input activations
-    * @param num_hidden1 the number of hidden activations in the 2nd layer
-    * @param num_hidden2 the number of hidden activations in the 3rd layer
-    * @param num_outputs the number of output activations
+    * @param num_per_layer an array storing the number of nodes per layer in the network
     * @param num_layers the number of layers
-    * @param λ the learning factor
     * @param weight_file_name the name of the weight file to save/load from
-    * @param train_or_run boolean whether training or running
-    * @param cycles_max the maximum number of cycles while training
-    * @param min_error the minimum error at which training stops
-    * @param min_rand the lower bound of the random weights
-    * @param max_rand the upper bound of the random weights
-    * @param save_frequency how often weights are saved while training
     */
-    Neural_Net(int num_inputs, int num_hidden1, int num_hidden2, int num_outputs, int num_layers, double λ, string weight_file_name, 
-                        bool train_or_run, int cycles_max, double min_error, double min_rand, double max_rand, int save_frequency);
+    Neural_Net(int* num_per_layer, int num_layers, string weight_file_name);
 
 
     //Destructor
@@ -129,12 +112,13 @@ public:
 
 
     /**
-    * Run the network
-    * @param print_complete boolean determining whether all info is printed
-    * @param print_table boolean determining if truth table is printed
+    * Runs the network, assumes that expected input values and # of expected input values
+    * have been initialized correctly
+    * @param print_table (int) storing boolean determining if truth table is printed
+    * @param print_error (int) storing boolean determining if error is printed in truth table
     * @return the total error of the network
     */
-    double run_network(bool print_complete, bool print_table);
+    double run_network(int print_table, int print_error);
 
 
     /**
@@ -148,15 +132,17 @@ public:
 
     /**
     * Train the neural network using gradient descent with backpropagation implemented for efficiency
+    * Takes in the maximum number of cycles and minimum error as parameters
     */
-    void train_network();
+    void train_network(int max_cycles, double min_error, double lambda, 
+                    double min_rand, double max_rand, int save_frequency);
 
 
-    //Setter for possible inputs
-    void set_possible_inputs(double**, int);
+    //Performs a deep copy to set expected inputs. n = # of cases
+    void set_expected_inputs(double** inputs, int n);
 
-    //Setter for expected outputs
-    void set_expected_outputs(double**, int);
+    //Performs a deep copy to set expected outputs. n = # of cases
+    void set_expected_outputs(double** outputs, int n);
 };
 
 #endif

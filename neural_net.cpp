@@ -1,16 +1,19 @@
 #include "neural_net.h"
 #include <chrono>
 #include <ctime> 
+#include <cmath>
 
-double Neural_Net::generate_random_number() const
+using namespace std;
+
+double Neural_Net::generate_random_number(int min_rand, int max_rand) const
 {
-    return ((double)rand() / RAND_MAX) * (this->max_rand - this->min_rand) + this->min_rand;
+    return ((double)rand() / RAND_MAX) * (max_rand - min_rand) + min_rand;
 }
 
 
 double Neural_Net::sigmoid(double input) const
 {
-    return 1.0 / (1.0 + exp(-input));
+    return 1.0 / (1.0 + std::exp(-input));
 }
 
 
@@ -20,25 +23,42 @@ double Neural_Net::sigmoid_deriv(double input) const
 }
 
 
+double Neural_Net::reLU(double input) const
+{
+    if(input < 0.0)
+        return 0.0;
+    else
+        return (double)input;
+}
+
+double Neural_Net::reLU_deriv(double input) const
+{
+    if(input > 0.0)
+        return 1.0;
+    else
+        return 0.0;
+}
+
+
 double Neural_Net::calculate_error(double output, double expected) const
 {
     return (0.5 * ((expected - output) * (expected - output)));
 }
 
 
-void Neural_Net::set_random_weights()
+void Neural_Net::set_random_weights(int min_rand, int max_rand)
 {
     //Loop through each layer
     for(int n = 0; n < this->num_layers - 1; n++)
     {
         //Loop through each activation's weights in each layer
-        for (int k = 0; k < this->max_activations; k++)
+        for (int k = 0; k < this->num_per_layer[n]; k++)
         {
             //Loop through each weight for each activation
-            for (int j = 0; j < this->max_activations; j++)
+            for (int j = 0; j < this->num_per_layer[n + 1]; j++)
             {
                //Assign a random value within the specified range to this weight
-               this->weights[n][k][j] = Neural_Net::generate_random_number();
+               this->weights[n][k][j] = Neural_Net::generate_random_number(min_rand, max_rand);
             }
         }
     }
@@ -51,92 +71,109 @@ void Neural_Net::save_weights()
 }
 
 
+void Neural_Net::allocate_training_memory()
+{
+    this->raw_vals = new double*[this->num_layers];
+    this->error_caused = new double*[this->num_layers];
+    this->actual_vals = new double*[this->num_layers];
+
+    actual_vals[0] = new double[this->num_per_layer[0]];
+    for(int i = 1; i < this->num_layers; i++)
+    {
+        raw_vals[i] = new double[this->num_per_layer[i]];
+        error_caused[i] = new double[this->num_per_layer[i]];
+        actual_vals[i] = new double[this->num_per_layer[i]];
+    }
+}
+
+
+void Neural_Net::free_training_memory()
+{
+   delete [] this->actual_vals[0];
+    for(int i = 1; i < this->num_layers; i++)
+    {
+        delete [] this->raw_vals[i];
+        delete [] this->error_caused[i];
+        delete [] this->actual_vals[i];
+    }
+    delete [] this->raw_vals;
+    delete [] this->error_caused;
+    delete [] this->actual_vals;
+}
+
+
+double Neural_Net::activation_func(double input) const
+{
+    return Neural_Net::sigmoid(input);
+}
+
+
+double Neural_Net::activation_func_deriv(double input) const
+{
+    return Neural_Net::sigmoid_deriv(input);
+}
+
+
 Neural_Net::Neural_Net()
 {
     this->activations = nullptr;
     this->weights = nullptr;
-    this->num_inputs = 0;
-    this->num_hidden1 = 0;
-    this->num_hidden2 = 0;
-    this->num_outputs = 0;
+    this->num_per_layer = nullptr;
     this->num_layers = 0;
-    this->λ = 0.0;
-    this->am = nullptr;
-    this->Θk = nullptr;
-    this->ak = nullptr;
-    this->Θj = nullptr;
-    this->aj = nullptr;
-    this->Ψj = nullptr;
-    this->ai = nullptr;
-    this->ψi = nullptr;
+
     this->Ti = nullptr;
-    this->min_rand = 0.0;
-    this->max_rand = 0.0;
-    this->min_error = 0.0;
-    this->cycles_max = 0;
-    this->save_frequency = 0;
+    this->raw_vals = nullptr;
+    this->actual_vals = nullptr;
+    this->error_caused = nullptr;
+    
     this->single_set_error = 0.0;
-    this->possible_input_values = nullptr;
+    this->expected_input_values = nullptr;
     this->expected_output_values = nullptr;
     this->num_input_cases = 0;
     this->num_output_cases = 0;
     this->weight_file_name = "";
-    //Default is run
-    this->train_or_run = false;
-    this->max_activations = 0;
+
+    this->single_set_error = 0.0;
 }
 
 
-Neural_Net::Neural_Net(int num_inputs, int num_hidden1, int num_hidden2, int num_outputs, int num_layers, double λ, string weight_file_name, 
-                        bool train_or_run, int cycles_max, double min_error, double min_rand, double max_rand, int save_frequency)
+Neural_Net::Neural_Net(int* num_per_layer, int num_layers, string weight_file_name)
 {
-    this->num_inputs = num_inputs;
-    this->num_hidden1 = num_hidden1;
-    this->num_hidden2 = num_hidden2;
-    this->num_outputs = num_outputs;
     this->num_layers = num_layers;
-    this->λ = λ;
-    this->am = new double[this->num_inputs];
-    this->Θk = new double[this->num_hidden1];
-    this->ak = new double[this->num_hidden1];
-    this->Θj = new double[this->num_hidden2];
-    this->aj = new double[this->num_hidden2];
-    this->Ψj = new double[this->num_hidden2];
-    this->ai = new double[this->num_outputs];
-    this->ψi = new double[this->num_outputs];
-    this->Ti = new double[this->num_outputs];
-    this->weight_file_name = weight_file_name;
-    this->train_or_run = train_or_run;
-    this->cycles_max = cycles_max;
-    this->min_error = min_error;
-    this->min_rand = min_rand;
-    this->max_rand = max_rand;
-    this->save_frequency = save_frequency;
+    this->num_per_layer = new int[this->num_layers];
+    for(int i = 0; i < this-> num_layers; i++)
+        this->num_per_layer[i] = num_per_layer[i];
 
-    //Set max activations
-    this->max_activations = this->num_inputs;
-    if(this->num_hidden1 > this->max_activations)
-        this->max_activations = this->num_hidden1;
-    if(this->num_hidden2 > this->max_activations)
-        this->max_activations = this->num_hidden2;
-    if(this->num_outputs > this->max_activations)
-        this->max_activations = this->num_outputs;
+    this->single_set_error = 0.0;
+
+
+    this->Ti = nullptr;
+    this->raw_vals = nullptr;
+    this->actual_vals = nullptr;
+    this->error_caused = nullptr;
+
+    this->expected_input_values = nullptr;
+    this->expected_output_values = nullptr;
+    this->num_input_cases = 0;
+    this->num_output_cases = 0;
+
+    this->weight_file_name = weight_file_name;
 
     //Allocate arrays
     this->activations = new double*[this->num_layers];
     for(int n = 0; n < this->num_layers; n++)
     {
-        this->activations[n] = new double[this->max_activations];
+        this->activations[n] = new double[this->num_per_layer[n]];
     }
     
     //Allocate weights
     this->weights = new double**[this->num_layers - 1];
-    for(int n = 0; n < this->num_layers -1; n++)
+    for(int n = 0; n < this->num_layers - 1; n++)
     {
-        this->weights[n] = new double*[this->max_activations];
-        for(int j = 0; j < this->max_activations; j++)
+        this->weights[n] = new double*[this->num_per_layer[n]];
+        for(int j = 0; j < this->num_per_layer[n]; j++)
         {
-            this->weights[n][j] = new double[this->max_activations];
+            this->weights[n][j] = new double[this->num_per_layer[n+1]];
         }
     }
 }
@@ -145,7 +182,7 @@ Neural_Net::Neural_Net(int num_inputs, int num_hidden1, int num_hidden2, int num
 Neural_Net::~Neural_Net()
 {
     //Activations 2-D array
-    if(this->activations != nullptr)
+    if(activations != nullptr)
     {
         for(int n = 0; n < this->num_layers; n++)
         {
@@ -156,15 +193,17 @@ Neural_Net::~Neural_Net()
         }
         delete [] this->activations;
     }
+    
 
     //Weights 3-D array
+    
     if(this->weights != nullptr)
     {
         for(int n = 0; n < this->num_layers - 1; n++)
         {
             if(this->weights[n] != nullptr)
             {
-                for(int j = 0; j < this->max_activations; j++)
+                for(int j = 0; j < this->num_per_layer[n]; j++)
                 {
                     delete [] this->weights[n][j];
                 }
@@ -173,28 +212,18 @@ Neural_Net::~Neural_Net()
         }
         delete[] this->weights;
     }
-
-    //Training 1-D arrays
-    if(this->am != nullptr) {delete this->am;}
-    if(this->Θk != nullptr) {delete this->Θk;}
-    if(this->ak != nullptr) {delete this->ak;}
-    if(this->Θj != nullptr) {delete this->Θj;}
-    if(this->aj != nullptr) {delete this->aj;}
-    if(this->Ψj != nullptr) {delete this->Ψj;}
-    if(this->ai != nullptr) {delete this->ai;}
-    if(this->ψi != nullptr) {delete this->ψi;}
-    if(this->Ti != nullptr) {delete this->Ti;}
-
-    if(this->possible_input_values != nullptr)
+    
+    
+    if(this->expected_input_values != nullptr)
     {
         for(int i = 0; i < this->num_input_cases; i++)
         {
-            if(this->possible_input_values[i] != nullptr) 
+            if(this->expected_input_values[i] != nullptr) 
             {
-                delete [] this->possible_input_values[i];
+                delete [] this->expected_input_values[i];
             }
         }
-        delete [] this->possible_input_values;
+        delete [] this->expected_input_values;
     }
 
     if(this->expected_output_values != nullptr)
@@ -208,10 +237,12 @@ Neural_Net::~Neural_Net()
         }
         delete [] this->expected_output_values;
     }
+    
+    delete [] this->num_per_layer;
 }
 
 
-double Neural_Net::run_network(bool print_complete, bool print_table)
+double Neural_Net::run_network(int print_table, int print_error)
 {
     double total_error = 0.0;
 
@@ -219,185 +250,107 @@ double Neural_Net::run_network(bool print_complete, bool print_table)
     for(int a = 0; a < this->num_input_cases; a++)
     {
         //Assign the input activation values
-        for(int m = 0; m < num_inputs; m++)
+        for(int m = 0; m < this->num_per_layer[0]; m++)
         {
-            this->activations[0][m] = this->possible_input_values[a][m];
+            this->activations[0][m] = this->expected_input_values[a][m];
         }
 
-        /*
-        * Evaluate the first hidden layer (n = 1)
-        * Iterate through each neuron in the hidden activation layer
-        */
-        for (int k = 0; k < this->num_hidden1; k++)
+        //Calculate values for every hidden layer and output layer
+        for(int n = 1; n < this->num_layers; n++)
         {
-            //Declare Θk
-            double Θk = 0.0;
-
-            //Loop through input activations
-            for (int m = 0; m < this->num_inputs; m++)
+            //This counter "c" keeps track of the current neuron in current layer
+            for(int c = 0; c < this->num_per_layer[n]; c++)
             {
-               //Sum the dot products into the value of the activation
-               Θk += this->activations[0][m] * this->weights[0][m][k];
-            } //for (int m = 0; m < net.numInputs; m++)
+                //Zero the value of the current neuron
+                this->activations[n][c] = 0.0;
 
-            //Then do the sigmoid of Θk to get the value of the activation
-            this->activations[1][k] = Neural_Net::sigmoid(Θk);
-        } //for (int k = 0; k < net.numHidden1; k++)
+                //Loop through each neuron in the previous layer
+                for(int p = 0; p < this->num_per_layer[n-1]; p++)
+                {
+                    //Sum the dot products of the previous layer's activation & weight
+                    this->activations[n][c] += this->activations[n-1][p] * this->weights[n-1][p][c];
+                }
+                //Then apply activation function
+                this->activations[n][c] = Neural_Net::activation_func(this->activations[n][c]);
+            }
+        }
 
-        /*
-        * Evaluate the second hidden layer (n = 2)
-        * Iterate through each neuron in the hidden activation layer
-        */
-        for(int j = 0; j < this->num_hidden2; j++)
-        {
-            //Declare Θj
-            double Θj = 0.0;
 
-            //Loop through hidden activations from previous layer (n=1)
-            for (int k = 0; k < this->num_hidden1; k++)
-            {
-               //Sum the dot products into the value of the activation
-               Θj += this->activations[1][k] * this->weights[1][k][j];
-            } //for (int k = 0; k < net.numHidden1; k++)
-
-            //Then do the sigmoid of Θj to get the value of the activation
-            this->activations[2][j] = Neural_Net::sigmoid(Θj);
-        } //for (int j = 0; j < net.numHidden2; j++)
-
-        //Now calculate output(s), loop through number of outputs
-        for (int i = 0; i < this->num_outputs; i++)
-        {
-            //Declare Θi
-            double Θi = 0.0;
-
-            for (int j = 0; j < this->num_hidden2; j++)
-            {
-               //Sum the dot products into the value of the activation
-               Θi += this->activations[2][j] * this->weights[2][j][i];
-            } //for (int j = 0; j < net.numHidden2; j++)
-
-            //Then do the sigmoid
-            this->activations[3][i] = Neural_Net::sigmoid(Θi);
-         } //for (int i = 0; i < net.numOutputs; i++)
-         
-        //Calculate error
         double this_error = 0.0;
-        for(int i = 0; i < this->num_outputs; i++)
+        //Calculate error by summing the error from each output for this case
+        for(int i = 0; i < this->num_per_layer[this->num_layers - 1]; i++)
         {
-            //Add error for this run to total error
             this_error += Neural_Net::calculate_error(this->activations[this->num_layers-1][i], this->expected_output_values[a][i]);
-            total_error += this_error;
-        } //for (int i = 0; i < net.numOutputs; i++)
+        }
+        //Add to running total
+        total_error += this_error;
 
-        //Print truth table if required
-        if (print_table)
+        //Print truth table if told to
+        if(print_table)
         {
             //Print out the input activations
-            for (int k = 0; k < this->num_inputs; k++)
-            {
-               cout << this->activations[0][k] << " ";
-            } //for (int k = 0; k < net.numInputs; k++)
+            for(int k = 0; k < this->num_per_layer[0]; k++)
+                cout << this->activations[0][k] << " ";
+            cout << "  ";
 
-            //Get a bit more space
-            cout << "  ";;
-
-            //Print out the expected outputs
-            for (int i = 0; i < this->num_outputs; i++)
-            {
+            //Print expected outputs
+            for(int i = 0; i < this->num_per_layer[3]; i++)
                cout << this->expected_output_values[a][i] << " ";
-            } //for (int i = 0; i < net.numOutputs; i++)
+            cout << "  ";
 
-            //Get a bit more space
-            cout << "  ";;
+            //Print out the actual output
+            for (int i = 0; i < this->num_per_layer[this->num_layers - 1]; i++)
+               cout << this->activations[this->num_layers - 1][i] << "\t";
 
-            //Print out the actual outputs - hardcoded for 4 layer network
-            for (int i = 0; i < this->num_outputs; i++)
-            {
-               cout << this->activations[3][i] << "\t";
-            } //for (int i = 0; i < net.numOutputs; i++)
-
-            //Now go to a new line
+            //Print individual error if told to
+            if(print_error)
+                cout << this_error;
             cout << endl;
-        } //if (printTable)
-      
-        //Truth table but with error
-        if (print_complete)
-        {
-            //Print out the input activations
-            for (int k = 0; k < this->num_inputs; k++)
-            {
-               cout << this->activations[0][k] << " ";
-            } //for (int k = 0; k < net.numInputs; k++)
-         
-            //Get a bit more space
-            cout << "  ";;
-         
-            //Print out the expected outputs
-            for (int i = 0; i < this->num_outputs; i++)
-            {
-               cout << this->expected_output_values[a][i] << " ";
-            } //for (int i = 0; i < net.numOutputs; i++)
-         
-            //Get a bit more space
-            cout << "  ";;
-         
-            //Print out the actual outputs - hardcoded for 4 layer network
-            for (int i = 0; i < this->num_outputs; i++)
-            {
-               cout << this->activations[3][i] << "\t";
-            } //for (int i = 0; i < net.numOutputs; i++)
-         
-            //Print error
-            cout << this_error << endl;
-        } //if (printComplete)
+        }
+    } //for (int a = 0; a < net.expectedInputValues.length; a++)
 
-    } //for (int a = 0; a < net.possibleInputValues.length; a++)
-
-    if (print_complete)
-    {
+    //Print total error if told to
+    if (print_error)
         cout << "Total Error: " << total_error << endl;
-    }
+    
     return total_error;
 }
 
 
 double Neural_Net::run_for_training(double error, int which_case)
 {
-    //Calculate jk, Θj, ψi. For each output activation
-    for(int i = 0; i < this->num_outputs; i++)
+    //Do forward prop and fill arrays starting from first hidden layer
+    for(int l = 1; l < this->num_layers; l++)
     {
-        //Zero Θi before calculating it
-        double Θi = 0.0;
-        //For each hidden activation on layer 3 (n=2)
-        for(int j = 0; j < this->num_hidden2; j++)
+        //For each neuron in the layer
+        for(int c = 0; c < this->num_per_layer[l]; c++)
         {
-            //Zero Θj
-            this->Θj[j] = 0.0;
-            //For each hidden activation on layer 3 (n=1)
-            for(int k = 0; k < this->num_hidden1; k++)
-            {
-                //Zero Θk
-                this->Θk[k] = 0.0;
-                //For each input activation
-                for(int m = 0; m < this->num_inputs; m++)
-                {
-                    this->Θk[k] += this->am[m] * this->weights[0][m][k];
-                } //for (int m = 0; m < this->numInputs; m++)
-                //Calculate and store ak and Θj
-                this->ak[k] = Neural_Net::sigmoid(this->Θk[k]);
-                this->Θj[j] += this->ak[k] * this->weights[1][k][j];
-            } //for (int k = 0; k < this->numHidden1; k++)
-            //Calculate and store aj
-            this->aj[j] = Neural_Net::sigmoid(this->Θj[j]);
-            Θi += this->aj[j] * this->weights[2][j][i];
-        } //for (int j = 0; j < this->numHidden2; j++)
+            //Zero raw value
+            this->raw_vals[l][c] = 0.0;
+            //For each neuron in the previous layer, sum dot products to calculate raw value for current neuron
+            for(int p = 0; p < this->num_per_layer[l-1]; p++)
+                this->raw_vals[l][c] += this->actual_vals[l-1][p] * this->weights[l-1][p][c];
+            //Now store actual value of the raw value calculated
+            this->actual_vals[l][c] = Neural_Net::activation_func(this->raw_vals[l][c]);
+        }
+    }
 
-        this->ai[i] = Neural_Net::sigmoid(Θi);
-        //(this->Ti[i] - Fi) is the difference between expected and actual output
-        this->ψi[i] = (this->Ti[i] - this->ai[i]) * Neural_Net::sigmoid_deriv(Θi);
+    //For each output neuron
+    for(int i = 0; i < this->num_per_layer[this->num_layers-1]; i++)
+    {
+        /*
+        * Error Function is 1/2 * (Expected output - acutal output)^2, so the partial of the error with respect
+        * to the output activation is (expected output - actual output)
+        * Given the output activation, the partial of the activation with respect to its raw input is the
+        * derivative of the activation function of the raw value of the activation
+        * Multiplied together, this makes the error_caused variable store the partial of the error with respect to the
+        * raw value of the activation
+        */
+        this->error_caused[this->num_layers-1][i] = (this->Ti[i] - this->actual_vals[this->num_layers-1][i]) 
+                                                    * Neural_Net::activation_func_deriv(this->raw_vals[this->num_layers-1][i]);
         //Sum up single set error
-        this->single_set_error += Neural_Net::calculate_error(Neural_Net::sigmoid(Θi), this->Ti[i]);
-    } //for (int i = 0; i < this->numOutputs; i++)
+        this->single_set_error += Neural_Net::calculate_error(this->actual_vals[this->num_layers-1][i], this->Ti[i]);
+    }
 
     //If all single set errors have been calculated, then new total error of the network has been calculated
     if(which_case == this->num_output_cases - 1)
@@ -406,7 +359,6 @@ double Neural_Net::run_for_training(double error, int which_case)
         this->single_set_error = 0.0;
         return error;
     } //if (whichCase == this->expectedOutputValues.length-1)
-
     //Otherwise new total error has not been calculated yet and return previous error
     else
     {
@@ -415,72 +367,70 @@ double Neural_Net::run_for_training(double error, int which_case)
 } //private static double runForTraining(NeuralNetwork net, double error, int whichCase)
 
 
-void Neural_Net::train_network()
-{     
-    Neural_Net::set_random_weights();
+void Neural_Net::train_network(int max_cycles, double min_error, double lambda,
+                                double min_rand, double max_rand, int save_frequency)
+{
+    Neural_Net::set_random_weights(min_rand, max_rand);
+    Neural_Net::allocate_training_memory();
 
-    //start timer
-    std::__1::chrono::system_clock::time_point start = std::chrono::system_clock::now();
+    //Start timer
+    std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
 
-    //Error calculated by running network - set to 1 now but just temporary until network is run
-    double error = 1.0;
-    //Number of cycles
+    //Error calculated by running network, initial value allows loop start
+    double error = min_error;
+    //Counter for # of cycles
     int cycles = 0;
-    //To store the single set error
 
     //Loop through training until a end condition is met
-    while(cycles < this->cycles_max && error > this->min_error)
+    while(cycles < max_cycles && error >= min_error)
     {
+        //Cycle what is expected from the output cases
         int this_case = cycles % this->num_output_cases;
-        //Cycle what is expected from the 4 output cases
         this->Ti = this->expected_output_values[this_case];
-        this->am = this->possible_input_values[this_case];
+
+        //Initialize input vals
+        for(int i = 0; i < this->num_per_layer[0]; i++)
+            this->actual_vals[0][i] = this->expected_input_values[this_case][i];
 
         //Fill forward prop arrays, calculate error (is only adjusted once all single set errors are calculated)
         error = Neural_Net::run_for_training(error, this_case);
 
-        //Declare Ωj
-        double Ωj = 0.0;
-        //For each hidden activation on 3rd layer (n=2)
-        for(int j = 0; j < this->num_hidden2; j++)
+        //Iterating from 2nd to last layer (last weight layer) to 1st layer - All hidden layers
+        for(int l = (this->num_layers - 2); l > 0; l--)
         {
-            //Zero Ωj
-            Ωj = 0.0;
-            //For each output activation
-            for(int i = 0; i < this->num_outputs; i++)
+            //For each neuron in current layer -> c represents current neuron
+            for(int c = 0; c < this->num_per_layer[l]; c++)
             {
-                Ωj += this->ψi[i] * this->weights[2][j][i];
-                //Update w2xx weights
-                this->weights[2][j][i] += this->λ * this->aj[j] * this->ψi[i];
-            } //for (int i = 0; i < this->numOutputs; i++)
+                this->error_caused[l][c] = 0.0;
+                //For each neuron in next layer -> n represents next neuron
+                for(int n = 0; n < this->num_per_layer[l+1]; n++)
+                {
+                    this->error_caused[l][c] += this->error_caused[l+1][n] * this->weights[l][c][n];
 
-            this->Ψj[j] = Ωj * Neural_Net::sigmoid_deriv(this->Θj[j]);
-        } //for (int j = 0; j < this->numHidden2; j++)
-
-        //Declare Ωk 
-        double Ωk = 0.0;
-        //For each hidden activation on 2nd layer (n=1)
-        for(int k = 0; k < this->num_hidden1; k++)
+                    /*
+                    * This ends up being lambda * (negative partial of error with respect to weight)
+                    * error_caused is the partial of error with respect to the raw value of the activation
+                    * specified by [l+1][n], and actual vals is the value post-activation function of the activation
+                    * specified by [l][c]. 
+                    * The weight being updated -> [l][c][n] is the weight that connects these two activations
+                    */
+                    this->weights[l][c][n] += lambda * this->actual_vals[l][c] * this->error_caused[l+1][n];
+                }
+                this->error_caused[l][c] = this->error_caused[l][c] * Neural_Net::activation_func_deriv(this->raw_vals[l][c]);
+            }
+        }
+        //0th layer - input activations
+        for(int c = 0; c < this->num_per_layer[0]; c++)
         {
-            //Zero Ωk
-            Ωk = 0.0;
-            //For each hidden activation on 3rd layer (n=2)
-            for(int j = 0; j < this->num_hidden2; j++)
+            for(int n = 0; n < this->num_per_layer[1]; n++)
             {
-                Ωk += this->Ψj[j] * this->weights[1][k][j];
-                this->weights[1][k][j] += this->λ * this->ak[k] * this->Ψj[j];
-            } //for (int j = 0; j < this->numHidden2; j++)
-
-            //For each input activation
-            for(int m = 0; m < this->num_inputs; m++)
-            {
-                this->weights[0][m][k] += this->λ * this->am[m] * Ωk * Neural_Net::sigmoid_deriv(this->Θk[k]);
-            } //for (int m = 0; m < this->numInputs; m++)
-        } //for (int k = 0; k < this->numHidden1; k++)
-         
+                this->weights[0][c][n] += lambda * this->actual_vals[0][c] * this->error_caused[1][n];
+            }
+        }
+        
 
         //Save weights every saveFrequency cycles
-        if(cycles % this->save_frequency == 0)
+        if(cycles % save_frequency == 0)
         {
             Neural_Net::save_weights();
         }
@@ -490,13 +440,13 @@ void Neural_Net::train_network()
     } //while (cycles < cyclesMax && Error > minError)
 
     //End timer
-    std::__1::chrono::system_clock::time_point end = std::chrono::system_clock::now();
+    std::chrono::system_clock::time_point end = std::chrono::system_clock::now();
 
     //Get white space
     cout << endl << endl;
 
     //Print why it stopped
-    if(cycles >= this->cycles_max)
+    if(cycles >= max_cycles)
     {
         cout << "Hit maximum number of loops." << endl;
     } //if (cycles >= this->cyclesMax)
@@ -506,21 +456,21 @@ void Neural_Net::train_network()
     } //else
 
     //Print config and rand range
-    cout << "Config: " << this->num_inputs << " " << this->num_hidden1 << " " << this->num_hidden2 << " " << this->num_outputs << endl;
-    cout << "Rand range: " << this->min_rand << " - " << this->max_rand << endl;
+    cout << "Config: " << this->num_per_layer[0] << " " << this->num_per_layer[1] << " " << this->num_per_layer[2] << " " << this->num_per_layer[3] << endl;
+    cout << "Rand range: " << min_rand << " - " << max_rand << endl;
 
     //Print N max, Emin, and lambda
-    cout << "N max was: " << this->cycles_max << endl;
-    cout << "Min Error was " << this->min_error << endl;
-    cout << "λ was: " << this->λ << endl;
+    cout << "N max was: " << max_cycles << endl;
+    cout << "Min Error was " << min_error << endl;
+    cout << "Lambda was: " << lambda << endl;
 
     //Print Error then # of iteration, using runNetwork to get total error as the error used to stop is almost but not quite the same
-    cout << "Error was: " << Neural_Net::run_network(false, false) << endl;
+    cout << "Error was: " << Neural_Net::run_network(0, 0) << endl;
     cout << "# of iterations: " << cycles << endl;
 
     //Now print truth table
     cout << "Truth Table" << endl;
-    Neural_Net::run_network(false, true);
+    Neural_Net::run_network(1, 0);
 
     std::chrono::duration<double> elapsed_seconds = end-start;
     //Print time taken
@@ -541,19 +491,62 @@ void Neural_Net::train_network()
 
     //Save weights
     Neural_Net::save_weights();
+    Neural_Net::free_training_memory();
 
 } //private static void trainNetwork(NeuralNetwork net, int saveFrequency)
 
 
-void Neural_Net::set_possible_inputs(double** inputs, int num)
+void Neural_Net::set_expected_inputs(double** inputs, int n)
 {
-    this->possible_input_values = inputs;
-    this->num_input_cases = num;
+    if(this->expected_input_values != nullptr)
+    {
+        for(int i = 0; i < this->num_input_cases; i++)
+        {
+            if(this->expected_input_values[i] != nullptr) 
+            {
+                delete [] this->expected_input_values[i];
+            }
+        }
+        delete [] this->expected_input_values;
+    }
+
+    this->expected_input_values = new double*[n];
+    for(int i = 0; i < n; i++)
+    {
+        this->expected_input_values[i] = new double[this->num_per_layer[0]];
+        for(int j = 0; j < this->num_per_layer[0]; j++)
+        {
+            this->expected_input_values[i][j] = inputs[i][j];
+        }
+    }
+    this->num_input_cases = n;
 }
 
-//Setter for possible outputs
-void Neural_Net::set_expected_outputs(double** outputs, int num)
+
+void Neural_Net::set_expected_outputs(double** outputs, int n)
 {
-    this->expected_output_values = outputs;
-    this->num_output_cases = num;
+    //Free already-allocated memory, if applicable
+    if(this->expected_output_values != nullptr)
+    {
+        for(int i = 0; i < this->num_output_cases; i++)
+        {
+            if(this->expected_output_values[i] != nullptr) 
+            {
+                delete [] this->expected_output_values[i];
+            }
+        }
+        delete [] this->expected_output_values;
+    }
+    
+    //Perform a deep copy of the expected outputs given
+    this->expected_output_values = new double*[n];
+    for(int i = 0; i < n; i++)
+    {
+        this->expected_output_values[i] = new double[this->num_per_layer[this->num_layers - 1]];
+        for(int j = 0; j < this->num_per_layer[this->num_layers - 1]; j++)
+        {
+            this->expected_output_values[i][j] = outputs[i][j];
+        }
+    }
+    this->num_output_cases = n;
 }

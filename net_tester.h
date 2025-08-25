@@ -10,6 +10,13 @@ private:
     Neural_Net* net;
 
 
+    /*
+    * Initializes the 2-D, (num_cases by num_inputs), array inputs
+    * to be binary values equal to the case #
+    * EX: With 4 inputs, inputs[11] would store binary of 11: {1,0,1,1}
+    */
+    void setup_inputs(double** inputs, int num_cases, int num_inputs);
+
     /**
      * Set up the expected outputs for AND, works for 2-B-1 network
      * Precondition: member var net is initialized; its inputs and outputs are being configured
@@ -64,6 +71,14 @@ public:
     void test_AND();
 
     void test_OR();
+
+    void test_XOR();
+
+    void test_AND_OR_XOR();
+
+    void test_ABC_tester1();
+
+    void test_ABC_tester2();
 };
 
 #endif
