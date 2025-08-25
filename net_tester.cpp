@@ -1,6 +1,18 @@
 #include "net_tester.h"
 
-
+/*
+* Sets up the inputs array for testing
+* The inputs array is a 2-D array, where the dimensions are the number of test cases by
+* the number of input neurons in the network.
+* Each test case has a unique combination of 0s and 1s which are used as boolean values to generate
+* the expected output
+* Therefore, the 0s and 1s of each test case is actually the binary representation of which
+* number test case it is
+* 
+* (yes I was proud of figuring this one out and coming up with a sleek solution for it, and yes
+* I did use to hardcode literally every test case in the OG code, the README has a warning section
+* about the old code for a reason)
+*/
 void Net_Tester::setup_inputs(double** inputs, int num_cases, int num_inputs)
 {
     for(int i = 0; i < num_cases; i++)
